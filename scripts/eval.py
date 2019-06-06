@@ -127,11 +127,11 @@ def main():
         print("Saving images...")
         for i,dice in enumerate(train_dice):
             image, mask_true, mask_pred = train_images[i]
-            figname = "train-{:03d}-{:.3f}.png".format(i, dice)
+            figname = "../results/train-{:03d}-{:.3f}.png".format(i, dice)
             save_image(figname, image, mask_true, np.round(mask_pred))
         for i,dice in enumerate(val_dice):
             image, mask_true, mask_pred = val_images[i]
-            figname = "val-{:03d}-{:.3f}.png".format(i, dice)
+            figname = "../results/val-{:03d}-{:.3f}.png".format(i, dice)
             save_image(figname, image, mask_true, np.round(mask_pred))
 
 if __name__ == '__main__':
