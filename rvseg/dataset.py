@@ -31,7 +31,7 @@ def load_images(data_dir, mask='both'):
     glob_search = os.path.join(data_dir, "patient*")
     patient_dirs = sorted(glob.glob(glob_search))
     if len(patient_dirs) == 0:
-        raise Exception("No patient directors found in {}".format(data_dir))
+        raise Exception("No patient directories found in {}".format(data_dir))
 
     # load all images into memory (dataset is small)
     images = []

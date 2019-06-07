@@ -5,6 +5,7 @@ from __future__ import division, print_function
 import os
 import argparse
 import logging
+import matplotlib.pyplot as plt
 
 from keras import losses, optimizers, utils
 from keras.optimizers import SGD, RMSprop, Adagrad, Adadelta, Adam, Adamax, Nadam
@@ -28,6 +29,28 @@ def select_optimizer(optimizer_name, optimizer_args):
         raise Exception("Unknown optimizer ({}).".format(name))
 
     return optimizers[optimizer_name](**optimizer_args)
+
+def save_plot(figname, history):
+    # "Accuracy"
+    plt.figure(figsize=(12, 3.75))
+    plt.subplot(1, 2, 1)
+    plt.title('Dice')
+    plt.plot(history.history['dice'])
+    plt.plot(history.history['val_dice'])
+    plt.ylabel('dice')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'validation'], loc='upper left')
+    plt.show()
+    # "Loss"
+    plt.subplot(1, 2, 2)
+    plt.title('Loss')
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'validation'], loc='upper left')
+    plt.show()
+    plt.savefig(figname, bbox_inches='tight')
 
 def train():
     logging.basicConfig(level=logging.INFO)
@@ -150,7 +173,7 @@ def train():
 
     # train
     logging.info("Begin training.")
-    m.fit_generator(train_generator,
+    history = m.fit_generator(train_generator,
                     epochs=args.epochs,
                     steps_per_epoch=train_steps_per_epoch,
                     validation_data=val_generator,
@@ -158,7 +181,9 @@ def train():
                     callbacks=callbacks,
                     verbose=2)
 
+    save_plot("../results/plot.png", history)
     m.save(os.path.join(args.outdir, args.outfile))
+    
 
 if __name__ == '__main__':
     train()
