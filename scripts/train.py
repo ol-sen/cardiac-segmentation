@@ -6,11 +6,15 @@ import os
 import argparse
 import logging
 import matplotlib.pyplot as plt
+import tensorflow as tf
 
 from keras import losses, optimizers, utils
 from keras.optimizers import SGD, RMSprop, Adagrad, Adadelta, Adam, Adamax, Nadam
+from keras import callbacks
 from keras.callbacks import ModelCheckpoint
+
 from keras import backend as K
+from keras.utils import multi_gpu_model
 
 from rvseg import dataset, models, loss, opts
 
@@ -51,6 +55,15 @@ def save_plot(figname, history):
     plt.legend(['train', 'validation'], loc='upper left')
     plt.show()
     plt.savefig(figname, bbox_inches='tight')
+
+class MyModelCheckpoint(callbacks.Callback):
+    def __init__(self, model, filepath, monitor, verbose, save_best_only, mode):
+         self.model_to_save = model
+         self.filepath = filepath
+         self.monitor = monitor
+         self.verbose = verbose
+         self.save_best_only = save_best_only
+         self.mode = mode
 
 def train():
     logging.basicConfig(level=logging.INFO)
@@ -94,17 +107,32 @@ def train():
         "dilated-densenet2": models.dilated_densenet2,
         "dilated-densenet3": models.dilated_densenet3,
     }
-    model = string_to_model[args.model]
-    m = model(height=height, width=width, channels=channels, classes=classes,
-              features=args.features, depth=args.depth, padding=args.padding,
-              temperature=args.temperature, batchnorm=args.batchnorm,
-              dropout=args.dropout)
+    if args.multi_gpu:
+        with tf.device('/cpu:0'):
+            model = string_to_model[args.model]
+            m = model(height=height, width=width, channels=channels,
+                classes=classes, features=args.features, depth=args.depth, 
+                padding=args.padding, temperature=args.temperature, 
+                batchnorm=args.batchnorm, dropout=args.dropout)
 
-    m.summary()
+            m.summary()
 
-    if args.load_weights:
-        logging.info("Loading saved weights from file: {}".format(args.load_weights))
-        m.load_weights(args.load_weights)
+            if args.load_weights:
+                logging.info("Loading saved weights from file: {}".format(args.load_weights))
+                m.load_weights(args.load_weights)
+    else:
+        model = string_to_model[args.model]
+        m = model(height=height, width=width, channels=channels,
+            classes=classes, features=args.features, depth=args.depth, 
+            padding=args.padding, temperature=args.temperature, 
+            batchnorm=args.batchnorm, dropout=args.dropout)
+
+        m.summary()
+
+        if args.load_weights:
+            logging.info("Loading saved weights from file: {}".format(args.load_weights))
+            m.load_weights(args.load_weights)
+
 
     # instantiate optimizer, and only keep args that have been set
     # (not all optimizers have args like `momentum' or `decay')
@@ -144,8 +172,13 @@ def train():
         return jaccard_coefs[1] # HACK for 2-class case
 
     metrics = ['accuracy', dice, jaccard]
+    
+    if args.multi_gpu:
+        parallel_model = multi_gpu_model(m, gpus=2)
+        parallel_model.compile(optimizer=optimizer, loss=lossfunc, metrics=metrics)
+    else:
+        m.compile(optimizer=optimizer, loss=lossfunc, metrics=metrics)
 
-    m.compile(optimizer=optimizer, loss=lossfunc, metrics=metrics)
 
     # automatic saving of model during training
     if args.checkpoint:
@@ -164,22 +197,38 @@ def train():
                 args.outdir, "weights-{epoch:02d}-{val_jaccard:.4f}.hdf5")
             monitor='val_jaccard'
             mode = 'max'
-        checkpoint = ModelCheckpoint(
-            filepath, monitor=monitor, verbose=1,
-            save_best_only=True, mode=mode)
+        if args.multi_gpu:
+            checkpoint = MyModelCheckpoint(m,
+                filepath, monitor=monitor, verbose=1,
+                save_best_only=True, mode=mode)
+        else:
+            checkpoint = ModelCheckpoint(m,
+                filepath, monitor=monitor, verbose=1,
+                save_best_only=True, mode=mode)
+
         callbacks = [checkpoint]
     else:
         callbacks = []
 
     # train
     logging.info("Begin training.")
-    history = m.fit_generator(train_generator,
-                    epochs=args.epochs,
-                    steps_per_epoch=train_steps_per_epoch,
-                    validation_data=val_generator,
-                    validation_steps=val_steps_per_epoch,
-                    callbacks=callbacks,
-                    verbose=2)
+    if args.multi_gpu:
+        history = parallel_model.fit_generator(train_generator,
+            epochs=args.epochs,
+            steps_per_epoch=train_steps_per_epoch,
+            validation_data=val_generator,
+            validation_steps=val_steps_per_epoch,
+            callbacks=callbacks,
+            verbose=2)
+    else:
+        history = m.fit_generator(train_generator,
+            epochs=args.epochs,
+            steps_per_epoch=train_steps_per_epoch,
+            validation_data=val_generator,
+            validation_steps=val_steps_per_epoch,
+            callbacks=callbacks,
+            verbose=2)
+
 
     save_plot("../results/plot.png", history)
     m.save(os.path.join(args.outdir, args.outfile))

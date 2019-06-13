@@ -23,6 +23,7 @@ definitions = [
                           'help': "When using dice or jaccard loss, how much to weight each output class."}),
 
     # training
+    ('multi_gpu',        (bool,  False,  "Whether to train on multiple GPUs or one GPU")), 
     ('epochs',           (int,   20,     "Number of epochs to train.")),
     ('batch-size',       (int,   32,     "Mini-batch size for training.")),
     ('validation-split', (float, 0.2,    "Percentage of training data to hold out for validation.")),
