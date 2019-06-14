@@ -41,6 +41,7 @@ definitions = [
     ('datadir',          (str,   '.',    "Directory containing patientXX/ directories.")),
     ('outdir',           (str,   '.',    "Directory to write output data.")),
     ('outfile',          (str,   'weights-final.hdf5', "File to write final model weights.")),
+    ('outfile_plot',     (str,   'plot.png', "File to write plots.")),
     ('load-weights',     (str,   '',     "Load model weights from specified file to initialize training.")),
     ('checkpoint',       {'default': False, 'action': 'store_true',
                           'help': "Write model weights after each epoch if validation accuracy improves."}),

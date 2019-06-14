@@ -18,7 +18,6 @@ from keras.utils import multi_gpu_model
 
 from rvseg import dataset, models, loss, opts
 
-
 def select_optimizer(optimizer_name, optimizer_args):
     optimizers = {
         'sgd': SGD,
@@ -230,7 +229,7 @@ def train():
             verbose=2)
 
 
-    save_plot("../results/plot.png", history)
+    save_plot(args.outfile_plot, history)
     m.save(os.path.join(args.outdir, args.outfile))
     
 
