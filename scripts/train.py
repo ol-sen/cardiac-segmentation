@@ -178,30 +178,20 @@ def train():
     else:
         m.compile(optimizer=optimizer, loss=lossfunc, metrics=metrics)
 
-
+    
     # automatic saving of model during training
     if args.checkpoint:
-        if args.loss == 'pixel':
-            filepath = os.path.join(
-                args.outdir, "weights-{epoch:02d}-{val_acc:.4f}.hdf5")
-            monitor = 'val_acc'
-            mode = 'max'
-        elif args.loss == 'dice':
-            filepath = os.path.join(
-                args.outdir, "weights-{epoch:02d}-{val_dice:.4f}.hdf5")
-            monitor='val_dice'
-            mode = 'max'
-        elif args.loss == 'jaccard':
-            filepath = os.path.join(
-                args.outdir, "weights-{epoch:02d}-{val_jaccard:.4f}.hdf5")
-            monitor='val_jaccard'
-            mode = 'max'
+        monitor = 'val_dice'
+        mode = 'max'
+        filepath = os.path.join(
+                args.outdir, "weights-{epoch:02d}-{val_dice:.4f}.hdf5") 
+        
         if args.multi_gpu:
             checkpoint = MyModelCheckpoint(m,
                 filepath, monitor=monitor, verbose=1,
                 save_best_only=True, mode=mode)
         else:
-            checkpoint = ModelCheckpoint(m,
+            checkpoint = ModelCheckpoint(
                 filepath, monitor=monitor, verbose=1,
                 save_best_only=True, mode=mode)
 

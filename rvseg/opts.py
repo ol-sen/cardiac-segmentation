@@ -23,7 +23,7 @@ definitions = [
                           'help': "When using dice or jaccard loss, how much to weight each output class."}),
 
     # training
-    ('multi_gpu',        (bool,  False,  "Whether to train on multiple GPUs or one GPU")), 
+    ('multi-gpu',        (bool,  False,  "Whether to train on multiple GPUs or one GPU")), 
     ('epochs',           (int,   20,     "Number of epochs to train.")),
     ('batch-size',       (int,   32,     "Mini-batch size for training.")),
     ('validation-split', (float, 0.2,    "Percentage of training data to hold out for validation.")),
@@ -31,7 +31,7 @@ definitions = [
     ('learning-rate',    (float, None,   "Optimizer learning rate.")),
     ('momentum',         (float, None,   "Momentum for SGD optimizer.")),
     ('decay',            (float, None,   "Learning rate decay (not applicable for nadam).")),
-    ('shuffle_train_val', {'default': False, 'action': 'store_true',
+    ('shuffle-train-val', {'default': False, 'action': 'store_true',
                            'help': "Shuffle images before splitting into train vs. val."}),
     ('shuffle',          {'default': False, 'action': 'store_true',
                           'help': "Shuffle images before each training epoch."}),
@@ -41,7 +41,7 @@ definitions = [
     ('datadir',          (str,   '.',    "Directory containing patientXX/ directories.")),
     ('outdir',           (str,   '.',    "Directory to write output data.")),
     ('outfile',          (str,   'weights-final.hdf5', "File to write final model weights.")),
-    ('outfile_plot',     (str,   'plot.png', "File to write plots.")),
+    ('outfile-plot',     (str,   'plot.png', "File to write plots.")),
     ('load-weights',     (str,   '',     "Load model weights from specified file to initialize training.")),
     ('checkpoint',       {'default': False, 'action': 'store_true',
                           'help': "Write model weights after each epoch if validation accuracy improves."}),
