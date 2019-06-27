@@ -37,27 +37,25 @@ def load_images(data_dir, mask='both'):
     images = []
     inner_masks = []
     outer_masks = []
+    masks = []
     for patient_dir in patient_dirs:
         p = patient.PatientData(patient_dir)
-        images += p.images
-        inner_masks += p.endocardium_masks
-        outer_masks += p.epicardium_masks
-
-    # reshape to account for channel dimension
-    images = np.asarray(images)[:,:,:,None]
-    if mask == 'inner':
-        masks = np.asarray(inner_masks)
-    elif mask == 'outer':
-        masks = np.asarray(outer_masks)
-    elif mask == 'both':
-        # mask = 2 for endocardium, 1 for cardiac wall, 0 elsewhere
-        masks = np.asarray(inner_masks) + np.asarray(outer_masks)
-
-    # one-hot encode masks
-    dims = masks.shape
-    classes = len(set(masks[0].flatten())) # get num classes from first image
-    new_shape = dims + (classes,)
-    masks = utils.to_categorical(masks).reshape(new_shape)
+        images += [np.asarray(p.images)[:,:,:,None]]
+        inner_masks += [p.endocardium_masks]
+        outer_masks += [p.epicardium_masks]
+        if mask == 'inner':
+            masks += [np.asarray(p.endocardium_masks)]
+        elif mask == 'outer':
+            masks += [np.asarray(p.epicardium_masks)]
+        elif mask == 'both':
+            masks += [np.asarray(endocardium_masks) + np.asarray(epicardium_masks)]
+ 
+    for i in range(len(images)): 
+        # one-hot encode masks
+        dims = masks[i].shape
+        classes = len(set(masks[i][0].flatten())) # get num classes from first image
+        new_shape = dims + (classes,)        
+        masks[i] = utils.to_categorical(masks[i]).reshape(new_shape)
 
     return images, masks
 
@@ -91,7 +89,7 @@ def random_elastic_deformation(image, alpha, sigma, mode='nearest',
     return values.reshape((height, width, channels))
 
 class Iterator(object):
-    def __init__(self, images, masks, batch_size,
+    def __init__(self, images, masks, batch_size, mode,
                  shuffle=True,
                  rotation_range=180,
                  width_shift_range=0.1,
@@ -104,6 +102,7 @@ class Iterator(object):
         self.images = images
         self.masks = masks
         self.batch_size = batch_size
+        self.mode = mode
         self.shuffle = shuffle
         augment_options = {
             'rotation_range': rotation_range,
@@ -129,31 +128,34 @@ class Iterator(object):
         # compute how many images to output in this batch
         start = self.i
         end = min(start + self.batch_size, len(self.images))
-
+        
         augmented_images = []
         augmented_masks = []
-        for n in self.index[start:end]:
-            image = self.images[n]
-            mask = self.masks[n]
+        for m in self.index[start:end]:
+            cur_patient_images = self.images[m]
+            cur_patient_masks = self.masks[m]
+            for n in range(len(cur_patient_images)):
+                image = cur_patient_images[n]
+                mask = cur_patient_masks[n]
 
-            _, _, channels = image.shape
+                _, _, channels = image.shape
 
-            # stack image + mask together to simultaneously augment
-            stacked = np.concatenate((image, mask), axis=2)
+                # stack image + mask together to simultaneously augment
+                stacked = np.concatenate((image, mask), axis=2)
 
-            # apply simple affine transforms first using Keras
-            augmented = self.idg.random_transform(stacked)
+                # apply simple affine transforms first using Keras
+                augmented = self.idg.random_transform(stacked)
 
-            # maybe apply elastic deformation
-            if self.alpha != 0 and self.sigma != 0:
-                augmented = random_elastic_deformation(
-                    augmented, self.alpha, self.sigma, self.fill_mode)
+                # maybe apply elastic deformation
+                if self.alpha != 0 and self.sigma != 0:
+                    augmented = random_elastic_deformation(
+                        augmented, self.alpha, self.sigma, self.fill_mode)
 
-            # split image and mask back apart
-            augmented_image = augmented[:,:,:channels]
-            augmented_images.append(augmented_image)
-            augmented_mask = np.round(augmented[:,:,channels:])
-            augmented_masks.append(augmented_mask)
+                # split image and mask back apart
+                augmented_image = augmented[:,:,:channels]
+                augmented_images.append(augmented_image)
+                augmented_mask = np.round(augmented[:,:,channels:])
+                augmented_masks.append(augmented_mask)
 
         self.i += self.batch_size
         if self.i >= len(self.images):
@@ -162,6 +164,48 @@ class Iterator(object):
                 np.random.shuffle(self.index)
 
         return np.asarray(augmented_images), np.asarray(augmented_masks)
+
+class Generator(object):
+    def __init__(self, images, masks, batch_size, mode, shuffle=True):
+        self.images = images
+        self.masks = masks
+        self.batch_size = batch_size
+        self.mode = mode
+        self.shuffle = shuffle
+        self.i = 0
+        self.index = np.arange(len(images))
+        if shuffle:
+            np.random.shuffle(self.index)
+
+    def __next__(self):
+        return self.next()
+
+    def next(self):
+        # compute how many images to output in this batch
+        start = self.i
+        end = min(start + self.batch_size, len(self.images))
+
+        images = []
+        masks = []
+        for m in self.index[start:end]: 
+            cur_patient_images = self.images[m]
+            cur_patient_images = self.images[m]
+            cur_patient_masks = self.masks[m]
+
+            for n in range(len(cur_patient_images)):
+                image = cur_patient_images[n]
+                mask = cur_patient_masks[n]
+                images.append(image)
+                masks.append(mask)
+
+        self.i += self.batch_size
+        if self.i >= len(self.images):
+            self.i = 0
+            if self.shuffle:
+                np.random.shuffle(self.index)
+
+        return np.asarray(images), np.asarray(masks)
+
 
 def normalize(x, epsilon=1e-7, axis=(1,2)):
     x -= np.mean(x, axis=axis, keepdims=True)
@@ -173,17 +217,18 @@ def create_generators(data_dir, batch_size, validation_split=0.0, mask='both',
                       augment_validation=False, augmentation_args={}):
     images, masks = load_images(data_dir, mask)
 
-    # before: type(masks) = uint8 and type(images) = uint16
-    # convert images to double-precision
-    images = images.astype('float64')
+    for i in range(len(images)):
+        # before: type(masks) = uint8 and type(images) = uint16
+        # convert images to double-precision
+        images[i] = images[i].astype('float64')
 
-    # maybe normalize image
-    if normalize_images:
-        normalize(images, axis=(1,2))
+        # maybe normalize image
+        if normalize_images:
+            normalize(images[i], axis=(1,2))
 
     if seed is not None:
         np.random.seed(seed)
-
+    
     if shuffle_train_val:
         # shuffle images and masks in parallel
         rng_state = np.random.get_state()
@@ -194,26 +239,24 @@ def create_generators(data_dir, batch_size, validation_split=0.0, mask='both',
     # split out last %(validation_split) of images as validation set
     split_index = int((1-validation_split) * len(images))
 
+    print("training set size:", len(images[:split_index]))
+    print("validation set size:", len(images[split_index:]))
+
     if augment_training:
         train_generator = Iterator(
-            images[:split_index], masks[:split_index],
-            batch_size, shuffle=shuffle, **augmentation_args)
+            images[:split_index], masks[:split_index], batch_size, 'train', shuffle=shuffle, **augmentation_args)
+            
     else:
-        idg = ImageDataGenerator()
-        train_generator = idg.flow(images[:split_index], masks[:split_index],
-                                   batch_size=batch_size, shuffle=shuffle)
+        train_generator = Generator(images[:split_index], masks[:split_index], batch_size, 'train', shuffle = shuffle)
 
     train_steps_per_epoch = ceil(split_index / batch_size)
 
     if validation_split > 0.0:
         if augment_validation:
             val_generator = Iterator(
-                images[split_index:], masks[split_index:],
-                batch_size, shuffle=shuffle, **augmentation_args)
+                images[split_index:], masks[split_index:], batch_size, 'val', shuffle=shuffle, **augmentation_args)
         else:
-            idg = ImageDataGenerator()
-            val_generator = idg.flow(images[split_index:], masks[split_index:],
-                                     batch_size=batch_size, shuffle=shuffle)
+            val_generator = Generator(images[split_index:], masks[split_index:],batch_size, 'val', shuffle = shuffle)
     else:
         val_generator = None
 
