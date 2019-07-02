@@ -211,12 +211,13 @@ def normalize(x, epsilon=1e-7, axis=(1,2)):
     x -= np.mean(x, axis=axis, keepdims=True)
     x /= np.std(x, axis=axis, keepdims=True) + epsilon
 
-def create_generators(data_dir, batch_size, validation_split=0.0, mask='both',
+def create_generators(data_dir, batch_size, train_indexes, val_indexes, 
+                      validation_split=0.0, mask='both',
                       shuffle_train_val=True, shuffle=True, seed=None,
                       normalize_images=True, augment_training=False,
                       augment_validation=False, augmentation_args={}):
     images, masks = load_images(data_dir, mask)
-
+    
     for i in range(len(images)):
         # before: type(masks) = uint8 and type(images) = uint16
         # convert images to double-precision
@@ -229,38 +230,59 @@ def create_generators(data_dir, batch_size, validation_split=0.0, mask='both',
     if seed is not None:
         np.random.seed(seed)
     
-    if shuffle_train_val:
+    if shuffle_train_val and len(train_indexes) == 0: #NO effect if cross validation is performed
         # shuffle images and masks in parallel
         rng_state = np.random.get_state()
         np.random.shuffle(images)
         np.random.set_state(rng_state)
         np.random.shuffle(masks)
 
-    # split out last %(validation_split) of images as validation set
-    split_index = int((1-validation_split) * len(images))
-
-    print("training set size:", len(images[:split_index]))
-    print("validation set size:", len(images[split_index:]))
-
-    if augment_training:
-        train_generator = Iterator(
-            images[:split_index], masks[:split_index], batch_size, 'train', shuffle=shuffle, **augmentation_args)
+    if len(train_indexes) != 0: #if cross validation is performed
+        images = np.array(images)
+        masks = np.array(masks)
+        if augment_training:
+            train_generator = Iterator(
+                images[train_indexes], masks[train_indexes], batch_size, 'train', shuffle=shuffle, **augmentation_args)
             
-    else:
-        train_generator = Generator(images[:split_index], masks[:split_index], batch_size, 'train', shuffle = shuffle)
+        else:
+            train_generator = Generator(images[train_indexes], masks[train_indexes], batch_size, 'train', shuffle = shuffle)
 
-    train_steps_per_epoch = ceil(split_index / batch_size)
+        train_steps_per_epoch = ceil(len(train_indexes) / batch_size)
 
-    if validation_split > 0.0:
         if augment_validation:
             val_generator = Iterator(
-                images[split_index:], masks[split_index:], batch_size, 'val', shuffle=shuffle, **augmentation_args)
+                images[val_indexes], masks[val_indexes], batch_size, 'val', shuffle=shuffle, **augmentation_args)
         else:
-            val_generator = Generator(images[split_index:], masks[split_index:],batch_size, 'val', shuffle = shuffle)
-    else:
-        val_generator = None
+            val_generator = Generator(images[val_indexes], masks[val_indexes], batch_size, 'val', shuffle = shuffle)
 
-    val_steps_per_epoch = ceil((len(images) - split_index) / batch_size)
+        val_steps_per_epoch = ceil(len(val_indexes) / batch_size)
+
+    else:
+        # split out last %(validation_split) of images as validation set
+        split_index = int((1 - validation_split) * len(images))
+
+        print("training set size:", len(images[:split_index]))
+        print("validation set size:", len(images[split_index:]))
+
+        if augment_training:
+            train_generator = Iterator(
+                images[:split_index], masks[:split_index], batch_size, 'train', shuffle=shuffle, **augmentation_args)
+            
+        else:
+            train_generator = Generator(images[:split_index], masks[:split_index], batch_size, 'train', shuffle = shuffle)
+
+        train_steps_per_epoch = ceil(split_index / batch_size)
+
+        if validation_split > 0.0:
+            if augment_validation:
+                val_generator = Iterator(
+                    images[split_index:], masks[split_index:], batch_size, 'val', shuffle=shuffle, **augmentation_args)
+            else:
+                val_generator = Generator(images[split_index:], masks[split_index:],batch_size, 'val', shuffle = shuffle)
+        else:
+            val_generator = None
+
+        val_steps_per_epoch = ceil((len(images) - split_index) / batch_size)
 
     return (train_generator, train_steps_per_epoch,
             val_generator, val_steps_per_epoch)

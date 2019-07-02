@@ -17,6 +17,8 @@ from keras.callbacks import ModelCheckpoint
 from keras import backend as K
 from keras.utils import multi_gpu_model
 
+from sklearn.model_selection import KFold
+
 from rvseg import dataset, models, loss, opts
 
 def select_optimizer(optimizer_name, optimizer_args):
@@ -142,24 +144,12 @@ def train():
         'alpha': args.alpha,
         'sigma': args.sigma,
     }
-    train_generator, train_steps_per_epoch, \
-        val_generator, val_steps_per_epoch = dataset.create_generators(
-            args.datadir, args.batch_size,
-            validation_split=args.validation_split,
-            mask=args.classes,
-            shuffle_train_val=args.shuffle_train_val,
-            shuffle=args.shuffle,
-            seed=args.seed,
-            normalize_images=args.normalize,
-            augment_training=args.augment_training,
-            augment_validation=args.augment_validation,
-            augmentation_args=augmentation_args)
 
-    # get image dimensions from first batch
-    images, masks = next(train_generator)
-    _, height, width, channels = images.shape
-    _, _, _, classes = masks.shape
-
+    images, masks = dataset.load_images(args.datadir, args.classes)
+    # get image dimensions
+    _, height, width, channels = images[0].shape
+    _, _, _, classes = masks[0].shape
+    
     logging.info("Building model...")
     string_to_model = {
         "unet": models.unet,
@@ -168,8 +158,9 @@ def train():
         "dilated-densenet2": models.dilated_densenet2,
         "dilated-densenet3": models.dilated_densenet3,
     }
+
     if args.multi_gpu:
-        with tf.device('/cpu:0'):
+         with tf.device('/cpu:0'):
             model = string_to_model[args.model]
             m = model(height=height, width=width, channels=channels,
                 classes=classes, features=args.features, depth=args.depth, 
@@ -193,7 +184,6 @@ def train():
         if args.load_weights:
             logging.info("Loading saved weights from file: {}".format(args.load_weights))
             m.load_weights(args.load_weights)
-
 
     # instantiate optimizer, and only keep args that have been set
     # (not all optimizers have args like `momentum' or `decay')
@@ -239,53 +229,140 @@ def train():
         parallel_model.compile(optimizer=optimizer, loss=lossfunc, metrics=metrics)
     else:
         m.compile(optimizer=optimizer, loss=lossfunc, metrics=metrics)
-
     
-    # automatic saving of model during training
-    if args.checkpoint:
-        monitor = 'val_dice'
-        mode = 'max'
-        filepath = os.path.join(
+    train_indexes = []
+    val_indexes = []
+    if args.cross_val_folds is not None:
+        if args.cross_val_folds > len(images):
+            raise Exception("Number of cross validation folds must be not more than {}.".format(len(images)))
+
+        kf = KFold(n_splits = 4)
+        val_dice_values = []
+        fold = 1
+        for train_indexes, val_indexes in kf.split(images):
+            print("fold #{}".format(fold))
+            print("{} {}".format(train_indexes, val_indexes))
+            train_generator, train_steps_per_epoch, \
+                val_generator, val_steps_per_epoch = dataset.create_generators(
+                    args.datadir, args.batch_size,
+                    train_indexes, val_indexes,
+                    validation_split=args.validation_split,
+                    mask=args.classes,
+                    shuffle_train_val=args.shuffle_train_val,
+                    shuffle=args.shuffle,
+                    seed=args.seed,
+                    normalize_images=args.normalize,
+                    augment_training=args.augment_training,
+                    augment_validation=args.augment_validation,
+                    augmentation_args=augmentation_args)
+        
+            # automatic saving of model during training
+            if args.checkpoint:
+                monitor = 'val_dice'
+                mode = 'max'
+                filepath = os.path.join(
+                        args.outdir, "weights-{epoch:02d}-{val_dice:.4f}" + "-fold{}.hdf5".format(fold)) 
+        
+                if args.multi_gpu:
+                    checkpoint = MultiGPUModelCheckpoint(
+                        filepath, m, monitor=monitor, verbose=1,
+                        save_best_only=True, mode=mode)
+                else:
+                    checkpoint = ModelCheckpoint(
+                        filepath, monitor=monitor, verbose=1,
+                        save_best_only=True, mode=mode)
+
+                callbacks = [checkpoint]
+            else:
+                callbacks = []
+
+            # train
+            logging.info("Begin training.")
+            if args.multi_gpu:
+                history = parallel_model.fit_generator(train_generator,
+                    epochs=args.epochs,
+                    steps_per_epoch=train_steps_per_epoch,
+                    validation_data=val_generator,
+                    validation_steps=val_steps_per_epoch,
+                    callbacks=callbacks,
+                    verbose=2)
+            else:
+                history = m.fit_generator(train_generator,
+                    epochs=args.epochs,
+                    steps_per_epoch=train_steps_per_epoch,
+                    validation_data=val_generator,
+                    validation_steps=val_steps_per_epoch,
+                    callbacks=callbacks,
+                    verbose=2)
+
+            save_plot(args.outfile_plot + "-fold{}.png".format(fold), history)
+            m.save(os.path.join(args.outdir, args.outfile + "-fold{}.hdf5".format(fold)))
+            val_dice_values += [max(history.history['val_dice'])]
+            fold += 1
+
+        print("Maximum dice values on validation sets are {}.".format(val_dice_values))
+        print("Mean dice value is {}.".format(np.mean(val_dice_values)))
+    else:
+        train_generator, train_steps_per_epoch, \
+            val_generator, val_steps_per_epoch = dataset.create_generators(
+                args.datadir, args.batch_size,
+                train_indexes, val_indexes,
+                validation_split=args.validation_split,
+                mask=args.classes,
+                shuffle_train_val=args.shuffle_train_val,
+                shuffle=args.shuffle,
+                seed=args.seed,
+                normalize_images=args.normalize,
+                augment_training=args.augment_training,
+                augment_validation=args.augment_validation,
+                augmentation_args=augmentation_args)
+
+        # automatic saving of model during training
+        if args.checkpoint:
+            monitor = 'val_dice'
+            mode = 'max'
+            filepath = os.path.join(
                 args.outdir, "weights-{epoch:02d}-{val_dice:.4f}.hdf5") 
         
-        if args.multi_gpu:
-            checkpoint = MultiGPUModelCheckpoint(
-                filepath, m, monitor=monitor, verbose=1,
-                save_best_only=True, mode=mode)
+            if args.multi_gpu:
+                checkpoint = MultiGPUModelCheckpoint(
+                    filepath, m, monitor=monitor, verbose=1,
+                    save_best_only=True, mode=mode)
+            else:
+                checkpoint = ModelCheckpoint(
+                    filepath, monitor=monitor, verbose=1,
+                    save_best_only=True, mode=mode)
+
+            callbacks = [checkpoint]
         else:
-            checkpoint = ModelCheckpoint(
-                filepath, monitor=monitor, verbose=1,
-                save_best_only=True, mode=mode)
-
-        callbacks = [checkpoint]
-    else:
-        callbacks = []
-
-    # train
-    logging.info("Begin training.")
-    if args.multi_gpu:
-        history = parallel_model.fit_generator(train_generator,
-            epochs=args.epochs,
-            steps_per_epoch=train_steps_per_epoch,
-            validation_data=val_generator,
-            validation_steps=val_steps_per_epoch,
-            callbacks=callbacks,
-            verbose=2)
-    else:
-        history = m.fit_generator(train_generator,
-            epochs=args.epochs,
-            steps_per_epoch=train_steps_per_epoch,
-            validation_data=val_generator,
-            validation_steps=val_steps_per_epoch,
-            callbacks=callbacks,
-            verbose=2)
-
-
-    save_plot(args.outfile_plot, history)
-    m.save(os.path.join(args.outdir, args.outfile))
+            callbacks = []
     
+        # train
+        logging.info("Begin training.")
+        if args.multi_gpu:
+            history = parallel_model.fit_generator(train_generator,
+                epochs=args.epochs,
+                steps_per_epoch=train_steps_per_epoch,
+                validation_data=val_generator,
+                validation_steps=val_steps_per_epoch,
+                callbacks=callbacks,
+                verbose=2)
+        else:
+            history = m.fit_generator(train_generator,
+                epochs=args.epochs,
+                steps_per_epoch=train_steps_per_epoch,
+                validation_data=val_generator,
+                validation_steps=val_steps_per_epoch,
+                callbacks=callbacks,
+                verbose=2)
+
+        save_plot(args.outfile_plot + ".png", history)
+        m.save(os.path.join(args.outdir, args.outfile + ".hdf5"))
+
+        print("Maximum dice value on validation set is {}.".format(max(history.history['val_dice'])))
 
 if __name__ == '__main__':
+    
     train()
 
 K.clear_session()

@@ -26,6 +26,7 @@ definitions = [
     ('multi-gpu',        (bool,  False,  "Whether to train on multiple GPUs or one GPU")), 
     ('epochs',           (int,   20,     "Number of epochs to train.")),
     ('batch-size',       (int,   32,     "Mini-batch size for training.")),
+    ('cross-val-folds',  (int,   None,   "Number of cross-validation folds.")),
     ('validation-split', (float, 0.2,    "Percentage of training data to hold out for validation.")),
     ('optimizer',        (str,   'adam', "Optimizer: sgd, rmsprop, adagrad, adadelta, adam, adamax, or nadam.")),
     ('learning-rate',    (float, None,   "Optimizer learning rate.")),
@@ -64,6 +65,7 @@ definitions = [
 ]
 
 noninitialized = {
+    'cross_val_folds': 'getint',
     'learning_rate': 'getfloat',
     'momentum': 'getfloat',
     'decay': 'getfloat',
