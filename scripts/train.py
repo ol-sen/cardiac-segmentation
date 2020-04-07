@@ -8,6 +8,7 @@ import logging
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
+import medreaders
 
 from keras import losses, optimizers, utils
 from keras.optimizers import SGD, RMSprop, Adagrad, Adadelta, Adam, Adamax, Nadam
@@ -19,7 +20,9 @@ from keras.utils import multi_gpu_model
 
 from sklearn.model_selection import KFold
 
-from rvseg import dataset, models, loss, opts
+from rvseg import dataset, models, loss, opts, RVSC
+
+from medreaders import ACDC
 
 def select_optimizer(optimizer_name, optimizer_args):
     optimizers = {
@@ -133,7 +136,7 @@ def train():
 
     args = opts.parse_arguments()
 
-    logging.info("Loading dataset...")
+    #logging.info("Loading dataset...")
     augmentation_args = {
         'rotation_range': args.rotation_range,
         'width_shift_range': args.width_shift_range,
@@ -145,11 +148,23 @@ def train():
         'sigma': args.sigma,
     }
 
-    images, masks = dataset.load_images(args.datadir, args.classes)
+    #ACDC.load(args.datadir, "all", "ES")
+    #ACDC.resize(216, 256)
+    
+    #images = ACDC.get_images()
+    #masks = ACDC.get_masks()
+   
+    ## get image dimensions
+    #height, width, _ = images[0].shape
+    #_, _, _, classes = masks[0].shape
+    #channels = 1
+
+    images, masks = RVSC.load(args.datadir, args.classes)
     # get image dimensions
     _, height, width, channels = images[0].shape
     _, _, _, classes = masks[0].shape
-    
+
+        
     logging.info("Building model...")
     string_to_model = {
         "unet": models.unet,
@@ -174,7 +189,7 @@ def train():
                 m.load_weights(args.load_weights)
     else:
         model = string_to_model[args.model]
-        m = model(height=height, width=width, channels=channels,
+        m = model(height=height, width=width, channels=2,
             classes=classes, features=args.features, depth=args.depth, 
             padding=args.padding, temperature=args.temperature, 
             batchnorm=args.batchnorm, dropout=args.dropout)
@@ -244,7 +259,7 @@ def train():
             print("{} {}".format(train_indexes, val_indexes))
             train_generator, train_steps_per_epoch, \
                 val_generator, val_steps_per_epoch = dataset.create_generators(
-                    args.datadir, args.batch_size,
+                    images, masks, args.datadir, args.batch_size,
                     train_indexes, val_indexes,
                     validation_split=args.validation_split,
                     mask=args.classes,
@@ -305,6 +320,7 @@ def train():
     else:
         train_generator, train_steps_per_epoch, \
             val_generator, val_steps_per_epoch = dataset.create_generators(
+                images, masks,
                 args.datadir, args.batch_size,
                 train_indexes, val_indexes,
                 validation_split=args.validation_split,

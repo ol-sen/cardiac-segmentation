@@ -5,23 +5,24 @@ from __future__ import division, print_function
 import numpy as np
 import matplotlib.pyplot as plt
 
-from rvseg import opts, patient, dataset, models
+from rvseg import opts, patient, dataset, models, RVSC
 
 
 def save_image(figname, image, mask_true, mask_pred, alpha=0.3):
-    cmap = plt.cm.gray
-    plt.figure(figsize=(12, 3.75))
+    cmap_image = plt.cm.gray
+    cmap_mask = plt.cm.Set1
+    plt.figure(figsize = (12, 3.75))
     plt.subplot(1, 3, 1)
     plt.axis("off")
-    plt.imshow(image, cmap=cmap)
+    plt.imshow(image, cmap = cmap_image)
     plt.subplot(1, 3, 2)
     plt.axis("off")
-    plt.imshow(image, cmap=cmap)
-    plt.imshow(mask_pred, cmap=cmap, alpha=alpha)
+    plt.imshow(image, cmap = cmap_image)
+    plt.imshow(mask_pred, cmap = cmap_mask, alpha = alpha)
     plt.subplot(1, 3, 3)
     plt.axis("off")
-    plt.imshow(image, cmap=cmap)
-    plt.imshow(mask_true, cmap=cmap, alpha=alpha)
+    plt.imshow(image, cmap = cmap_image)
+    plt.imshow(mask_true, cmap = cmap_mask, alpha=alpha)
     plt.savefig(figname, bbox_inches='tight')
     plt.close()
 
@@ -72,9 +73,16 @@ def main():
         'alpha': args.alpha,
         'sigma': args.sigma,
     }
+
+    images, masks = RVSC.load(args.datadir, args.classes)
+
+    train_indexes = []
+    val_indexes = []
+
     train_generator, train_steps_per_epoch, \
         val_generator, val_steps_per_epoch = dataset.create_generators(
-            args.datadir, args.batch_size,
+            images, masks, args.datadir, args.batch_size,
+            train_indexes, val_indexes,
             validation_split=args.validation_split,
             mask=args.classes,
             shuffle_train_val=args.shuffle_train_val,
@@ -85,10 +93,10 @@ def main():
             augment_validation=args.augment_validation,
             augmentation_args=augmentation_args)
 
-    # get image dimensions from first batch
-    images, masks = next(train_generator)
-    _, height, width, channels = images.shape
-    _, _, _, classes = masks.shape
+
+    # get image dimensions
+    _, height, width, channels = images[0].shape
+    _, _, _, classes = masks[0].shape
 
     print("Building model...")
     string_to_model = {
