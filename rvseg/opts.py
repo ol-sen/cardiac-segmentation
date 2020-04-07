@@ -13,7 +13,7 @@ definitions = [
     ('temperature',      (float, 1.0,    "Temperature of final softmax layer in model.")),
     ('padding',          (str,   'same', "Padding in convolutional layers. Either `same' or `valid'.")),
     ('dropout',          (float, 0.0,    "Rate for dropout of activation units.")),
-    ('classes',          (str,   'inner', "One of `inner' (endocardium), `outer' (epicardium), or `both'.")),
+    ('classes',          (str,   'all', "Depends on dataset.")),
     ('batchnorm',        {'default': False, 'action': 'store_true', 
                           'help': "Apply batch normalization before nonlinearities."}),
 

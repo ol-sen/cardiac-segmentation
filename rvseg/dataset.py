@@ -1,63 +1,14 @@
 from __future__ import division, print_function
 
-import os
-import glob
 import numpy as np
 from math import ceil
 from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.filters import gaussian_filter
 
-from keras import utils
 from keras.preprocessing import image as keras_image
 from keras.preprocessing.image import ImageDataGenerator
 
-from . import patient
-
-
-def load_images(data_dir, mask='both'):
-    """Load all patient images and contours from TrainingSet, Test1Set or
-    Test2Set directory. The directories and images are read in sorted order.
-
-    Arguments:
-      data_dir - path to data directory (TrainingSet, Test1Set or Test2Set)
-
-    Output:
-      tuples of (images, masks), both of which are 4-d tensors of shape
-      (batchsize, height, width, channels). Images is uint16 and masks are
-      uint8 with values 0 or 1.
-    """
-    assert mask in ['inner', 'outer', 'both']
-
-    glob_search = os.path.join(data_dir, "patient*")
-    patient_dirs = sorted(glob.glob(glob_search))
-    if len(patient_dirs) == 0:
-        raise Exception("No patient directories found in {}".format(data_dir))
-
-    # load all images into memory (dataset is small)
-    images = []
-    inner_masks = []
-    outer_masks = []
-    masks = []
-    for patient_dir in patient_dirs:
-        p = patient.PatientData(patient_dir)
-        images += [np.asarray(p.images)[:,:,:,None]]
-        inner_masks += [p.endocardium_masks]
-        outer_masks += [p.epicardium_masks]
-        if mask == 'inner':
-            masks += [np.asarray(p.endocardium_masks)]
-        elif mask == 'outer':
-            masks += [np.asarray(p.epicardium_masks)]
-        elif mask == 'both':
-            masks += [np.asarray(endocardium_masks) + np.asarray(epicardium_masks)]
- 
-    for i in range(len(images)): 
-        # one-hot encode masks
-        dims = masks[i].shape
-        classes = len(set(masks[i][0].flatten())) # get num classes from first image
-        new_shape = dims + (classes,)        
-        masks[i] = utils.to_categorical(masks[i]).reshape(new_shape)
-
-    return images, masks
+from . import RVSC
 
 def random_elastic_deformation(image, alpha, sigma, mode='nearest',
                                random_state=None):
@@ -211,12 +162,12 @@ def normalize(x, epsilon=1e-7, axis=(1,2)):
     x -= np.mean(x, axis=axis, keepdims=True)
     x /= np.std(x, axis=axis, keepdims=True) + epsilon
 
-def create_generators(data_dir, batch_size, train_indexes, val_indexes, 
-                      validation_split=0.0, mask='both',
+def create_generators(images, masks, data_dir, batch_size, train_indexes, val_indexes,                      validation_split=0.0, mask='inner',
                       shuffle_train_val=True, shuffle=True, seed=None,
                       normalize_images=True, augment_training=False,
                       augment_validation=False, augmentation_args={}):
-    images, masks = load_images(data_dir, mask)
+    
+    #images, masks = RVSC.load(data_dir, mask)
     
     for i in range(len(images)):
         # before: type(masks) = uint8 and type(images) = uint16
