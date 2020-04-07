@@ -189,7 +189,7 @@ def train():
                 m.load_weights(args.load_weights)
     else:
         model = string_to_model[args.model]
-        m = model(height=height, width=width, channels=2,
+        m = model(height=height, width=width, channels=channels,
             classes=classes, features=args.features, depth=args.depth, 
             padding=args.padding, temperature=args.temperature, 
             batchnorm=args.batchnorm, dropout=args.dropout)
