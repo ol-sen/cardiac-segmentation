@@ -26,6 +26,21 @@ def save_image(figname, image, mask_true, mask_pred, alpha=0.3):
     plt.savefig(figname, bbox_inches='tight')
     plt.close()
 
+def save_image_mask_GT(figname, image, mask, alpha=0.5):
+    cmap_image = plt.cm.gray
+    cmap_mask = plt.cm.Set1
+    plt.figure(figsize = (12, 3.75))
+    plt.subplot(1, 2, 1)
+    plt.axis("off")
+    plt.imshow(image, cmap = cmap_image)
+    plt.subplot(1, 2, 2)
+    plt.axis("off")
+    plt.imshow(image, cmap = cmap_image)
+    plt.imshow(mask, cmap = cmap_mask, alpha = alpha)
+    plt.savefig(figname, bbox_inches='tight')
+    plt.close()
+
+
 def sorensen_dice(y_true, y_pred):
     intersection = np.sum(y_true * y_pred)
     return 2*intersection / (np.sum(y_true) + np.sum(y_pred))
@@ -92,7 +107,11 @@ def main():
             augment_training=args.augment_training,
             augment_validation=args.augment_validation,
             augmentation_args=augmentation_args)
-
+    
+    images, masks = next(train_generator) 
+    save_image_mask_GT("1.png", images[0][:, :, 0], masks[0][:, :, 1])
+    import sys
+    sys.exit(0)
 
     # get image dimensions
     _, height, width, channels = images[0].shape

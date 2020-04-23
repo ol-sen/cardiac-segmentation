@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
 import medreaders
+import keras
 
 from keras import losses, optimizers, utils
 from keras.optimizers import SGD, RMSprop, Adagrad, Adadelta, Adam, Adamax, Nadam
@@ -23,6 +24,8 @@ from sklearn.model_selection import KFold
 from rvseg import dataset, models, loss, opts, RVSC
 
 from medreaders import ACDC
+
+#keras.backend.set_image_data_format("channels_first")
 
 def select_optimizer(optimizer_name, optimizer_args):
     optimizers = {
@@ -131,6 +134,20 @@ class MultiGPUModelCheckpoint(callbacks.Callback):
                 else:
                     self.base_model.save(filepath, overwrite=True)
 
+def save_image(figname, image, mask, alpha=0.5):
+    cmap_image = plt.cm.gray
+    cmap_mask = plt.cm.Set1
+    plt.figure(figsize = (12, 3.75))
+    plt.subplot(1, 2, 1)
+    plt.axis("off")
+    plt.imshow(image, cmap = cmap_image)
+    plt.subplot(1, 2, 2)
+    plt.axis("off")
+    plt.imshow(image, cmap = cmap_image)
+    plt.imshow(mask, cmap = cmap_mask, alpha = alpha)
+    plt.savefig(figname, bbox_inches='tight')
+    plt.close()
+
 def train():
     logging.basicConfig(level=logging.INFO)
 
@@ -148,21 +165,27 @@ def train():
         'sigma': args.sigma,
     }
 
-    #ACDC.load(args.datadir, "all", "ES")
-    #ACDC.resize(216, 256)
+    ACDC.load(args.datadir, "RV", "ES")
+    ACDC.resize(216, 256)
+    channels = 1
     
-    #images = ACDC.get_images()
-    #masks = ACDC.get_masks()
-   
-    ## get image dimensions
-    #height, width, _ = images[0].shape
-    #_, _, _, classes = masks[0].shape
-    #channels = 1
+    images = ACDC.get_images()
+    for i in range(len(images)):
+        height, width, depth = images[i].shape 
+        #images[i] = images[i].reshape(depth, channels, height, width)    
+        images[i] = images[i].reshape(depth, height, width, channels)
+     
+ 
+    masks = ACDC.get_masks()
+    for i in range(len(masks)):
+        height, width, depth, classes = masks[i].shape
+        masks[i] = masks[i].reshape(depth, height, width, classes)    
 
-    images, masks = RVSC.load(args.datadir, args.classes)
-    # get image dimensions
-    _, height, width, channels = images[0].shape
-    _, _, _, classes = masks[0].shape
+    #images, masks = RVSC.load(args.datadir, args.classes)
+
+    ## get image dimensions
+    #_, height, width, channels = images[0].shape
+    #_, _, _, classes = masks[0].shape
 
         
     logging.info("Building model...")
@@ -262,7 +285,6 @@ def train():
                     images, masks, args.datadir, args.batch_size,
                     train_indexes, val_indexes,
                     validation_split=args.validation_split,
-                    mask=args.classes,
                     shuffle_train_val=args.shuffle_train_val,
                     shuffle=args.shuffle,
                     seed=args.seed,
@@ -324,7 +346,6 @@ def train():
                 args.datadir, args.batch_size,
                 train_indexes, val_indexes,
                 validation_split=args.validation_split,
-                mask=args.classes,
                 shuffle_train_val=args.shuffle_train_val,
                 shuffle=args.shuffle,
                 seed=args.seed,

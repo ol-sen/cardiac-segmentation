@@ -162,12 +162,10 @@ def normalize(x, epsilon=1e-7, axis=(1,2)):
     x -= np.mean(x, axis=axis, keepdims=True)
     x /= np.std(x, axis=axis, keepdims=True) + epsilon
 
-def create_generators(images, masks, data_dir, batch_size, train_indexes, val_indexes,                      validation_split=0.0, mask='inner',
-                      shuffle_train_val=True, shuffle=True, seed=None,
+def create_generators(images, masks, data_dir, batch_size, train_indexes, val_indexes,                validation_split=0.0, shuffle_train_val=True,
+                      shuffle=True, seed=None,
                       normalize_images=True, augment_training=False,
                       augment_validation=False, augmentation_args={}):
-    
-    #images, masks = RVSC.load(data_dir, mask)
     
     for i in range(len(images)):
         # before: type(masks) = uint8 and type(images) = uint16
